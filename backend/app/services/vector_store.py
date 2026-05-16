@@ -2,7 +2,7 @@ import math
 from typing import Protocol
 
 from app.core.config import Settings
-from app.models.schemas import DocumentChunk, KnowledgeBaseScope, Source
+from app.models.schemas import DocumentChunk, KnowledgeBase, KnowledgeBaseScope, Source
 
 
 class VectorRepository(Protocol):
@@ -10,6 +10,9 @@ class VectorRepository(Protocol):
         ...
 
     def search(self, scope: KnowledgeBaseScope, query_vector: list[float], limit: int) -> list[Source]:
+        ...
+
+    def list_knowledge_bases(self) -> list[KnowledgeBase]:
         ...
 
 
@@ -34,6 +37,16 @@ class InMemoryVectorRepository:
             reverse=True,
         )
         return [_source_from_chunk(chunk, score) for chunk, score in scored[:limit]]
+
+    def list_knowledge_bases(self) -> list[KnowledgeBase]:
+        scopes = {
+            (chunk.product_line, chunk.product_version)
+            for chunk, _vector in self._items
+        }
+        return [
+            KnowledgeBase(product_line=product_line, product_version=product_version)
+            for product_line, product_version in sorted(scopes)
+        ]
 
 
 class QdrantVectorRepository:
@@ -102,6 +115,30 @@ class QdrantVectorRepository:
                 text=result.payload["text"],
             )
             for result in results
+        ]
+
+    def list_knowledge_bases(self) -> list[KnowledgeBase]:
+        scopes: set[tuple[str, str]] = set()
+        offset = None
+        while True:
+            points, offset = self.client.scroll(
+                collection_name=self.settings.qdrant_collection,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                product_line = payload.get("product_line")
+                product_version = payload.get("product_version")
+                if isinstance(product_line, str) and isinstance(product_version, str):
+                    scopes.add((product_line, product_version))
+            if offset is None:
+                break
+        return [
+            KnowledgeBase(product_line=product_line, product_version=product_version)
+            for product_line, product_version in sorted(scopes)
         ]
 
 
