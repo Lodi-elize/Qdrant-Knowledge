@@ -9,3 +9,7 @@ frontend/tsconfig.tsbuildinfo
 
 .env
 .omx/
+docs/
+app/docs/
+backend/app/docs/
+scripts/

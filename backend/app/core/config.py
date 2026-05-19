@@ -9,7 +9,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="APP_", env_file=".env", extra="ignore")
 
     app_name: str = "AI Knowledge Assistant"
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:8080", "http://127.0.0.1:8080"]
+    )
 
     admin_secret: str = "dev-admin-secret"
     admin_cookie_name: str = "admin_session"

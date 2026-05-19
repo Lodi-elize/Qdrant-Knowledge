@@ -107,7 +107,7 @@ docker compose up -d qdrant
 Start backend:
 
 ```powershell
-.\.venv\Scripts\python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --reload
+.\.venv\Scripts\python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 9090 --reload
 ```
 
 Start frontend:
@@ -118,8 +118,8 @@ npm --prefix frontend run dev -- --host 127.0.0.1
 
 Open:
 
-- Web UI: http://127.0.0.1:5173
-- API docs: http://127.0.0.1:8000/docs
+- Web UI: http://127.0.0.1:8080
+- API docs: http://127.0.0.1:9090/docs
 - Qdrant dashboard: http://127.0.0.1:6333/dashboard
 
 ## Usage
@@ -137,7 +137,7 @@ The answer panel renders Markdown. Source evidence is collapsed by default and c
 Query:
 
 ```powershell
-Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/query `
+Invoke-RestMethod -Method Post http://127.0.0.1:9090/api/query `
   -ContentType "application/json" `
   -Body '{"product_line":"Delta","product_version":"v1","question":"What is the refund policy?"}'
 ```
@@ -145,7 +145,7 @@ Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/query `
 Upload:
 
 ```powershell
-curl.exe -X POST "http://127.0.0.1:8000/api/admin/upload?product_line=Delta&product_version=v1" `
+curl.exe -X POST "http://127.0.0.1:9090/api/admin/upload?product_line=Delta&product_version=v1" `
   -H "X-Admin-Secret: change-me" `
   -F "file=@.\docs\delta-v1.md"
 ```
