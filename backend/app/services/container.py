@@ -4,6 +4,7 @@ from app.core.config import Settings, get_settings
 from app.services.embeddings import (
     EmbeddingService,
     HashEmbeddingService,
+    HuggingFaceBgeEmbeddingService,
     OpenAICompatibleEmbeddingService,
 )
 from app.services.generation import GenerationService
@@ -23,6 +24,8 @@ def get_embedding_service() -> EmbeddingService:
     settings = get_settings()
     if settings.embedding_provider == "openai-compatible":
         return OpenAICompatibleEmbeddingService(settings)
+    if settings.embedding_provider == "huggingface":
+        return HuggingFaceBgeEmbeddingService(settings)
     return HashEmbeddingService(settings.embedding_dimensions)
 
 
@@ -35,7 +38,11 @@ def get_vector_repository() -> VectorRepository:
 
 
 def get_retrieval_service() -> ScopedRetrievalService:
-    return ScopedRetrievalService(get_embedding_service(), get_vector_repository())
+    return ScopedRetrievalService(
+        get_embedding_service(),
+        get_vector_repository(),
+        min_score=get_settings().min_retrieval_score,
+    )
 
 
 def get_generation_service() -> GenerationService:

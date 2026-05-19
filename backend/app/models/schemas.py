@@ -64,6 +64,8 @@ class QueryResponse(BaseModel):
     grounded_summary: str
     sources: list[Source]
     used_supplemental_knowledge: bool
+    generated_by_ai: bool = True
+    generation_notice: str = "AI generated"
     supplemental_note: str | None = None
 
 
@@ -87,4 +89,3 @@ class DocumentChunk(BaseModel):
     product_version: str
     chunk_index: int
     text: str
-

@@ -19,6 +19,8 @@ export type QueryResponse = {
   grounded_summary: string;
   sources: Source[];
   used_supplemental_knowledge: boolean;
+  generated_by_ai: boolean;
+  generation_notice: string;
   supplemental_note: string | null;
 };
 
@@ -86,4 +88,3 @@ export async function queryAssistant(
     }),
   );
 }
-

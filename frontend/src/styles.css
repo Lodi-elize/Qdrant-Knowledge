@@ -5,12 +5,19 @@
   line-height: 1.5;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
+  overflow: hidden;
 }
 
 button,
@@ -56,16 +63,20 @@ select:focus {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   gap: 0;
+  overflow: hidden;
 }
 
 .workspace {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .topbar {
@@ -101,6 +112,7 @@ select:focus {
   min-height: 0;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
+  overflow: hidden;
 }
 
 .messages {
@@ -184,7 +196,10 @@ select:focus {
 .answer-block {
   display: grid;
   gap: 8px;
-  padding: 2px 2px 0;
+  padding: 12px;
+  border: 1px solid #dce7e5;
+  border-radius: 8px;
+  background: #fbfefe;
 }
 
 .answer-block p {
@@ -313,15 +328,45 @@ select:focus {
   align-items: center;
   color: #526064;
   font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.generation-badge {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid #d8e1e3;
+  background: #f6f8f8;
+  color: #526064;
+}
+
+.generation-badge.ai-grounded {
+  border-color: #b8d7cf;
+  background: #e8f4f1;
+  color: #0d5d50;
+}
+
+.generation-badge.ai-only {
+  border-color: #e4d199;
+  background: #fff8df;
+  color: #665518;
+}
+
+.generation-badge.grounded {
+  border-color: #ccd7dc;
+  background: #f1f5f6;
+  color: #44545a;
 }
 
 .composer {
   border-top: 1px solid #dce3e5;
   background: rgba(255, 255, 255, 0.94);
-  padding: 14px 22px;
+  padding: 14px 22px 24px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;
   gap: 10px;
+  z-index: 2;
 }
 
 .composer input {
@@ -368,9 +413,100 @@ select:focus {
   gap: 6px;
 }
 
+.file-input {
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px dashed #8fbab3;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #f7fbfa 0%, #eff8f6 100%);
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.file-input:hover {
+  border-color: #126a5b;
+  background: #eef8f5;
+  box-shadow: 0 6px 18px rgba(18, 106, 91, 0.08);
+}
+
+.file-input svg {
+  color: #126a5b;
+}
+
+.file-input input {
+  min-height: 34px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: #334147;
+}
+
+.file-input input::file-selector-button {
+  margin-right: 12px;
+  border: 1px solid #b8d7cf;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #0d5d50;
+  min-height: 30px;
+  padding: 0 12px;
+  cursor: pointer;
+  font-weight: 700;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
+}
+
+.file-input input::file-selector-button:hover {
+  border-color: #126a5b;
+  background: #d7ebe6;
+  color: #08483f;
+}
+
+.file-input input:disabled::file-selector-button {
+  border-color: #d1dada;
+  background: #eef2f2;
+  color: #7c8a8d;
+  cursor: not-allowed;
+}
+
+.file-input small {
+  grid-column: 2;
+  color: #667579;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-button {
+  min-height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  letter-spacing: 0;
+  box-shadow: 0 8px 18px rgba(18, 106, 91, 0.18);
+  transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.upload-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(18, 106, 91, 0.24);
+}
+
+.upload-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 5px 12px rgba(18, 106, 91, 0.18);
+}
+
+.upload-button:disabled {
+  box-shadow: none;
+}
+
 .evidence {
-  border-top: 1px solid #edf1f2;
-  padding-top: 12px;
+  border: 1px solid #e0e8e9;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fbfb;
   display: grid;
   gap: 10px;
 }
@@ -495,8 +631,19 @@ blockquote p {
 }
 
 @media (max-width: 840px) {
+  body {
+    overflow: auto;
+  }
+
   .app-shell {
+    height: auto;
+    min-height: 100dvh;
     grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .workspace {
+    min-height: 100dvh;
   }
 
   .admin-panel {

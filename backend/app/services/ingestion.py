@@ -35,7 +35,10 @@ class IngestionService:
         file_name = Path(upload.filename or "document").name
         raw = await upload.read()
         if len(raw) > self.settings.max_upload_bytes:
-            raise ValueError("File exceeds configured upload size limit.")
+            raise ValueError(
+                "File exceeds configured upload size limit: "
+                f"{_format_bytes(len(raw))} uploaded, {_format_bytes(self.settings.max_upload_bytes)} allowed."
+            )
 
         text = extract_text(file_name, raw)
         chunks = self.build_chunks(scope, file_name, text)
@@ -80,6 +83,14 @@ def extract_text(file_name: str, raw: bytes) -> str:
     return raw.decode("utf-8", errors="ignore")
 
 
+def _format_bytes(value: int) -> str:
+    if value >= 1024 * 1024:
+        return f"{value / (1024 * 1024):.1f} MB"
+    if value >= 1024:
+        return f"{value / 1024:.1f} KB"
+    return f"{value} bytes"
+
+
 def _extract_pdf(raw: bytes) -> str:
     from io import BytesIO
 
@@ -88,4 +99,3 @@ def _extract_pdf(raw: bytes) -> str:
     reader = PdfReader(BytesIO(raw))
     pages = [page.extract_text() or "" for page in reader.pages]
     return "\n".join(pages).strip()
-

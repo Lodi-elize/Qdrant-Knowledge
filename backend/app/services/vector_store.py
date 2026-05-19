@@ -1,4 +1,5 @@
 import math
+import re
 from typing import Protocol
 
 from app.core.config import Settings
@@ -10,6 +11,9 @@ class VectorRepository(Protocol):
         ...
 
     def search(self, scope: KnowledgeBaseScope, query_vector: list[float], limit: int) -> list[Source]:
+        ...
+
+    def lexical_search(self, scope: KnowledgeBaseScope, terms: list[str], limit: int) -> list[Source]:
         ...
 
     def list_knowledge_bases(self) -> list[KnowledgeBase]:
@@ -38,6 +42,21 @@ class InMemoryVectorRepository:
         )
         return [_source_from_chunk(chunk, score) for chunk, score in scored[:limit]]
 
+    def lexical_search(self, scope: KnowledgeBaseScope, terms: list[str], limit: int) -> list[Source]:
+        matches = [
+            chunk
+            for chunk, _vector in self._items
+            if chunk.product_line == scope.product_line
+            and chunk.product_version == scope.product_version
+            and _matches_terms(chunk.file_name, chunk.text, terms)
+        ]
+        ranked = sorted(
+            matches,
+            key=lambda chunk: _term_match_count(chunk.file_name, chunk.text, terms),
+            reverse=True,
+        )
+        return [_source_from_chunk(chunk, 0.2) for chunk in ranked[:limit]]
+
     def list_knowledge_bases(self) -> list[KnowledgeBase]:
         scopes = {
             (chunk.product_line, chunk.product_version)
@@ -58,13 +77,24 @@ class QdrantVectorRepository:
         if settings.qdrant_url == ":memory:":
             self.client = QdrantClient(location=":memory:")
         else:
-            self.client = QdrantClient(url=settings.qdrant_url)
-        collections = {collection.name for collection in self.client.get_collections().collections}
+            self.client = QdrantClient(url=settings.qdrant_url, trust_env=False)
+        collections = {collection.name: collection for collection in self.client.get_collections().collections}
         if settings.qdrant_collection not in collections:
             self.client.create_collection(
                 collection_name=settings.qdrant_collection,
                 vectors_config=VectorParams(size=settings.embedding_dimensions, distance=Distance.COSINE),
             )
+        else:
+            info = self.client.get_collection(settings.qdrant_collection)
+            vector_config = info.config.params.vectors
+            vector_size = vector_config.size if hasattr(vector_config, "size") else None
+            if vector_size is not None and vector_size != settings.embedding_dimensions:
+                raise RuntimeError(
+                    "Qdrant collection vector size mismatch: "
+                    f"{settings.qdrant_collection} has {vector_size}, "
+                    f"APP_EMBEDDING_DIMENSIONS is {settings.embedding_dimensions}. "
+                    "Recreate the collection and re-upload/reindex documents after changing embedding models."
+                )
 
     def upsert_chunks(self, chunks: list[DocumentChunk], vectors: list[list[float]]) -> None:
         from qdrant_client.models import PointStruct
@@ -117,6 +147,48 @@ class QdrantVectorRepository:
             for result in results
         ]
 
+    def lexical_search(self, scope: KnowledgeBaseScope, terms: list[str], limit: int) -> list[Source]:
+        from qdrant_client.models import FieldCondition, Filter, MatchValue
+
+        query_filter = Filter(
+            must=[
+                FieldCondition(key="product_line", match=MatchValue(value=scope.product_line)),
+                FieldCondition(key="product_version", match=MatchValue(value=scope.product_version)),
+            ]
+        )
+        matches: list[Source] = []
+        offset = None
+        while True:
+            points, offset = self.client.scroll(
+                collection_name=self.settings.qdrant_collection,
+                scroll_filter=query_filter,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                if _matches_terms(payload.get("file_name", ""), payload.get("text", ""), terms):
+                    matches.append(
+                        Source(
+                            document_id=payload["document_id"],
+                            file_name=payload["file_name"],
+                            product_line=payload["product_line"],
+                            product_version=payload["product_version"],
+                            chunk_index=payload["chunk_index"],
+                            score=0.2,
+                            text=payload["text"],
+                        )
+                    )
+            if offset is None or len(matches) >= limit:
+                break
+        return sorted(
+            matches,
+            key=lambda source: _term_match_count(source.file_name, source.text, terms),
+            reverse=True,
+        )[:limit]
+
     def list_knowledge_bases(self) -> list[KnowledgeBase]:
         scopes: set[tuple[str, str]] = set()
         offset = None
@@ -159,3 +231,15 @@ def _source_from_chunk(chunk: DocumentChunk, score: float) -> Source:
         score=score,
         text=chunk.text,
     )
+
+
+def _matches_terms(file_name: str, text: str, terms: list[str]) -> bool:
+    haystack = f"{file_name}\n{text}".lower()
+    compact_haystack = re.sub(r"\s+", "", haystack)
+    return any(term.lower() in haystack or term.lower() in compact_haystack for term in terms)
+
+
+def _term_match_count(file_name: str, text: str, terms: list[str]) -> int:
+    haystack = f"{file_name}\n{text}".lower()
+    compact_haystack = re.sub(r"\s+", "", haystack)
+    return sum(1 for term in terms if term.lower() in haystack or term.lower() in compact_haystack)

@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Bot, ChevronDown, Database, FileText, FileUp, KeyRound, MessageSquare, Send, Sparkles, UserRound } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -29,6 +29,7 @@ export function App() {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
+  const messagesRef = useRef<HTMLDivElement | null>(null);
 
   async function refreshKnowledgeBases() {
     const items = await listKnowledgeBases();
@@ -44,6 +45,22 @@ export function App() {
   }, []);
 
   const selectedLabel = useMemo(() => `${productLine} / ${productVersion}`, [productLine, productVersion]);
+
+  useLayoutEffect(() => {
+    const node = messagesRef.current;
+    if (!node) return;
+    node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
+  }, [messages, busy]);
+
+  useEffect(() => {
+    const node = messagesRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(() => {
+      node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   async function submitQuestion(event: FormEvent) {
     event.preventDefault();
@@ -124,7 +141,7 @@ export function App() {
         </header>
 
         <div className="chat-panel">
-          <div className="messages">
+          <div className="messages" ref={messagesRef}>
             {messages.length === 0 ? (
               <div className="empty-state">
                 <MessageSquare size={30} aria-hidden />
@@ -192,14 +209,19 @@ export function App() {
             <div className="file-input">
               <FileUp size={17} aria-hidden />
               <input
+                key={file?.name || 'empty-file'}
                 type="file"
                 accept=".txt,.md,.pdf"
                 disabled={!adminReady}
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
               />
+              <small>{file ? file.name : adminReady ? '支持 PDF、Markdown、TXT' : '先启用管理员会话'}</small>
             </div>
           </label>
-          <button type="submit" disabled={!adminReady}>上传到知识库</button>
+          <button className="upload-button" type="submit" disabled={!adminReady || !file}>
+            <FileUp size={17} aria-hidden />
+            <span>上传到知识库</span>
+          </button>
         </form>
         <p className="status">{status}</p>
       </aside>
@@ -217,7 +239,8 @@ function ChatMessage({ message }: { message: Message }) {
             <section className="answer-block">
               <div className="section-label">
                 <Sparkles size={15} aria-hidden />
-                <span>回答</span>
+                <span>{message.response.generated_by_ai ? 'AI生成' : '回答'}</span>
+                <GenerationBadge response={message.response} />
               </div>
               <MarkdownContent content={message.text} />
             </section>
@@ -228,6 +251,17 @@ function ChatMessage({ message }: { message: Message }) {
         )}
       </div>
     </article>
+  );
+}
+
+function GenerationBadge({ response }: { response: QueryResponse }) {
+  if (!response.generated_by_ai) {
+    return <span className="generation-badge grounded">知识库内容</span>;
+  }
+  return (
+    <span className={`generation-badge ${response.sources.length ? 'ai-grounded' : 'ai-only'}`}>
+      {response.sources.length ? 'AI 生成 · 已结合知识库' : 'AI 生成 · 未命中文档'}
+    </span>
   );
 }
 
@@ -257,7 +291,7 @@ function Evidence({ response }: { response: QueryResponse }) {
       <button className="evidence-toggle" type="button" onClick={() => setExpanded((value) => !value)}>
         <div className="section-label">
           <FileText size={15} aria-hidden />
-          <strong>文档依据</strong>
+          <strong>查询到的内容</strong>
         </div>
         <span>{response.sources.length} 个片段</span>
         <ChevronDown size={16} aria-hidden />

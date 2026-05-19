@@ -1,5 +1,6 @@
 import hashlib
 import math
+import re
 
 import httpx
 
@@ -19,7 +20,7 @@ class HashEmbeddingService(EmbeddingService):
 
     def embed(self, text: str) -> list[float]:
         vector = [0.0] * self.dimensions
-        tokens = [token.lower() for token in text.split() if token.strip()]
+        tokens = tokenize_for_embedding(text)
         for token in tokens or [text.lower()]:
             digest = hashlib.sha256(token.encode("utf-8")).digest()
             index = int.from_bytes(digest[:4], "big") % self.dimensions
@@ -27,6 +28,16 @@ class HashEmbeddingService(EmbeddingService):
             vector[index] += sign
         norm = math.sqrt(sum(value * value for value in vector)) or 1.0
         return [value / norm for value in vector]
+
+
+def tokenize_for_embedding(text: str) -> list[str]:
+    normalized = text.lower()
+    tokens = re.findall(r"[a-z0-9]+", normalized)
+    cjk_chars = re.findall(r"[\u4e00-\u9fff]", normalized)
+    tokens.extend(cjk_chars)
+    tokens.extend("".join(cjk_chars[index : index + 2]) for index in range(max(len(cjk_chars) - 1, 0)))
+    tokens.extend("".join(cjk_chars[index : index + 3]) for index in range(max(len(cjk_chars) - 2, 0)))
+    return [token for token in tokens if token.strip()]
 
 
 class OpenAICompatibleEmbeddingService(EmbeddingService):
@@ -46,3 +57,17 @@ class OpenAICompatibleEmbeddingService(EmbeddingService):
         )
         response.raise_for_status()
         return response.json()["data"][0]["embedding"]
+
+
+class HuggingFaceBgeEmbeddingService(EmbeddingService):
+    def __init__(self, settings: Settings) -> None:
+        from langchain_huggingface import HuggingFaceEmbeddings
+
+        self.model = HuggingFaceEmbeddings(
+            model_name=settings.huggingface_embedding_model,
+            model_kwargs={"device": settings.huggingface_embedding_device},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+
+    def embed(self, text: str) -> list[float]:
+        return list(self.model.embed_query(text))

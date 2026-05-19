@@ -10,7 +10,7 @@ A customer-facing RAG knowledge assistant for product documentation. Administrat
 - Product-line/product-version knowledge-base isolation.
 - Qdrant vector storage with metadata-filtered retrieval.
 - DeepSeek/OpenAI-compatible chat generation.
-- Local deterministic embeddings for offline development and tests.
+- Local deterministic embeddings for tests, plus local HuggingFace BGE embeddings for Chinese retrieval.
 - Markdown rendering for model answers.
 - Collapsed source evidence panel by default.
 
@@ -87,14 +87,19 @@ APP_ADMIN_COOKIE_SECURE=false
 APP_VECTOR_BACKEND=qdrant
 APP_QDRANT_URL=http://127.0.0.1:6333
 APP_QDRANT_COLLECTION=product_docs
+APP_EMBEDDING_DIMENSIONS=512
 APP_MODEL_PROVIDER=openai-compatible
-APP_EMBEDDING_PROVIDER=local
+APP_EMBEDDING_PROVIDER=huggingface
+APP_HUGGINGFACE_EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
+APP_HUGGINGFACE_EMBEDDING_DEVICE=cpu
 APP_OPENAI_CHAT_API_BASE=https://api.deepseek.com
 APP_OPENAI_CHAT_API_KEY=<your-deepseek-api-key>
 APP_CHAT_MODEL=deepseek-v4-flash
+APP_MIN_RETRIEVAL_SCORE=0.2
+APP_MAX_UPLOAD_BYTES=52428800
 ```
 
-DeepSeek is used for chat generation only. Embeddings default to local deterministic embeddings so the app does not call an unsupported DeepSeek embedding endpoint.
+DeepSeek is used for chat generation only. For local Chinese retrieval, use `APP_EMBEDDING_PROVIDER=huggingface` with `BAAI/bge-small-zh-v1.5` and set `APP_EMBEDDING_DIMENSIONS=512`. If you switch from the default local hash embedding to BGE, recreate the Qdrant collection and re-upload documents because the vector dimension changes from 64 to 512.
 
 ## Run
 
@@ -131,6 +136,10 @@ Open:
 5. Ask questions in the chat panel.
 
 The answer panel renders Markdown. Source evidence is collapsed by default and can be expanded when needed.
+
+## Beginner Build Guide
+
+For a step-by-step Chinese guide that explains how to build a similar project from scratch, see [docs/from-zero-build-guide.md](docs/from-zero-build-guide.md).
 
 ## API Examples
 
