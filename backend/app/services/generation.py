@@ -1,6 +1,6 @@
 from app.core.config import Settings
 from app.models.schemas import QueryResponse, Source
-from app.services.retrieval import extract_requested_article
+from app.services.retrieval import extract_requested_article, extract_requested_interface
 
 
 class GenerationService:
@@ -11,6 +11,8 @@ class GenerationService:
 
     def answer(self, question: str, sources: list[Source]) -> QueryResponse:
         if not sources:
+            if self.settings.enable_ai_generation and self.settings.model_provider == "openai-compatible":
+                return self._remote_answer(question, sources)
             return self._missing_knowledge_answer()
         exact_article_sources = self._exact_article_sources(question, sources)
         if exact_article_sources is not None:
@@ -23,6 +25,10 @@ class GenerationService:
 
     def _exact_article_sources(self, question: str, sources: list[Source]) -> list[Source] | None:
         for source in sources:
+            interface_text = extract_requested_interface(question, source.text)
+            if interface_text is not None:
+                exact_source = source.model_copy(update={"text": interface_text})
+                return [exact_source]
             article_text = extract_requested_article(question, source.text)
             if article_text is None:
                 continue

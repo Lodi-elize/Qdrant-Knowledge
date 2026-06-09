@@ -132,6 +132,10 @@ def _matched_concepts(concepts: list[set[str]], text: str) -> list[set[str]]:
 def _query_concepts(value: str) -> list[set[str]]:
     concepts: list[set[str]] = []
     seen: set[str] = set()
+    for group in _interface_reference_groups(value):
+        key = "|".join(sorted(group))
+        concepts.append(group)
+        seen.add(key)
     for group in _article_reference_groups(value):
         key = "|".join(sorted(group))
         concepts.append(group)
@@ -155,12 +159,17 @@ def _domain_terms(value: str) -> set[str]:
 
 
 def _lexical_fallback_terms(value: str) -> list[str]:
+    interface_terms = sorted(
+        {term for group in _interface_reference_groups(value) for term in group},
+        key=len,
+        reverse=True,
+    )
     article_terms = sorted(
         {term for group in _article_reference_groups(value) for term in group},
         key=len,
         reverse=True,
     )
-    terms = [*article_terms, *sorted(_meaningful_terms(value), key=len, reverse=True)]
+    terms = [*interface_terms, *article_terms, *sorted(_meaningful_terms(value), key=len, reverse=True)]
     compact_terms: list[str] = []
     for term in terms:
         if len(term) < 3:
@@ -192,6 +201,21 @@ def _meaningful_terms(value: str) -> set[str]:
         for term in terms
         if len(term) >= 2 and term.strip() and term not in _STOP_TERMS
     }
+
+
+def _interface_reference_groups(value: str) -> list[set[str]]:
+    return [{reference, reference.lower()} for reference in _interface_reference_codes(value)]
+
+
+def _interface_reference_codes(value: str) -> list[str]:
+    codes: list[str] = []
+    seen_codes: set[str] = set()
+    for code in re.findall(r"(?<![a-zA-Z0-9])([a-zA-Z][0-9]{5})(?![a-zA-Z0-9])", value):
+        normalized = code.upper()
+        if normalized not in seen_codes:
+            codes.append(normalized)
+            seen_codes.add(normalized)
+    return codes
 
 
 _CHINESE_DIGITS = {
@@ -253,10 +277,32 @@ def _article_terms(number: int) -> set[str]:
 
 
 def _focus_article_text(source: Source, question: str) -> Source:
+    interface_text = extract_requested_interface(question, source.text)
+    if interface_text is not None:
+        return source.model_copy(update={"text": interface_text})
     article_text = extract_requested_article(question, source.text)
     if article_text is not None:
         return source.model_copy(update={"text": article_text})
     return _focus_article_excerpt(source, question)
+
+
+def extract_requested_interface(question: str, text: str) -> str | None:
+    codes = _interface_reference_codes(question)
+    if not codes:
+        return None
+    for code in codes:
+        match = _find_compact_match(text, [code])
+        if match is None:
+            continue
+        start = _interface_section_start(text, code, match[0])
+        next_match = _find_next_interface_match(text, code, match[0])
+        end = (
+            _interface_section_start(text, _next_interface_code(code) or code, next_match[0])
+            if next_match is not None
+            else len(text)
+        )
+        return _clean_article_text(text[start:end].strip())
+    return None
 
 
 def extract_requested_article(question: str, text: str) -> str | None:
@@ -296,6 +342,36 @@ def _focus_article_excerpt(source: Source, question: str) -> Source:
 def _find_next_article_match(text: str, number: int, start: int) -> tuple[int, int] | None:
     next_number = number + 1
     return _offset_match(_find_compact_match(text[start + 1 :], list(_article_terms(next_number))), start + 1)
+
+
+def _find_next_interface_match(text: str, code: str, start: int) -> tuple[int, int] | None:
+    next_code = _next_interface_code(code)
+    if next_code is None:
+        return None
+    return _offset_match(_find_compact_match(text[start + 1 :], [next_code]), start + 1)
+
+
+def _next_interface_code(code: str) -> str | None:
+    number = int(code[1:])
+    if number >= 99999:
+        return None
+    return f"{code[0].upper()}{number + 1:05d}"
+
+
+def _interface_section_start(text: str, code: str, code_start: int) -> int:
+    line_start = text.rfind("\n", 0, code_start) + 1
+    line_end_index = text.find("\n", code_start)
+    line_end = line_end_index if line_end_index >= 0 else len(text)
+    line = text[line_start:line_end]
+    heading_marker = "###"
+    heading_index = line.find(heading_marker)
+    if heading_index >= 0:
+        return line_start + heading_index
+    table_cell = f"| {code}"
+    table_index = line.lower().find(table_cell.lower())
+    if table_index >= 0:
+        return line_start + table_index
+    return line_start
 
 
 def _offset_match(match: tuple[int, int] | None, offset: int) -> tuple[int, int] | None:

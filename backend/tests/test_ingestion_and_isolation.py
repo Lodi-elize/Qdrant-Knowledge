@@ -1,5 +1,15 @@
 from io import BytesIO
 
+import pytest
+from fastapi import UploadFile
+
+from app.core.config import Settings
+from app.models.schemas import KnowledgeBaseScope
+from app.services.embeddings import HashEmbeddingService
+from app.services.ingestion import IngestionService
+from app.services.knowledge_bases import KnowledgeBaseService
+from app.services.vector_store import InMemoryVectorRepository
+
 
 def upload(client, product_line: str, product_version: str, text: str):
     return client.post(
@@ -46,3 +56,19 @@ def test_unsupported_file_type_is_rejected(client):
     )
     assert response.status_code == 415
 
+
+@pytest.mark.anyio
+async def test_oversized_upload_reports_configured_limit():
+    settings = Settings(max_upload_bytes=4)
+    service = IngestionService(
+        settings=settings,
+        embeddings=HashEmbeddingService(settings.embedding_dimensions),
+        vector_repository=InMemoryVectorRepository(),
+        knowledge_bases=KnowledgeBaseService(),
+    )
+
+    with pytest.raises(ValueError, match="9 bytes uploaded, 4 bytes allowed"):
+        await service.ingest_upload(
+            KnowledgeBaseScope(product_line="Alpha", product_version="v1"),
+            UploadFile(file=BytesIO(b"too large"), filename="guide.txt"),
+        )

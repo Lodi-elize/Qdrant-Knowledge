@@ -1,4 +1,7 @@
+import builtins
 from uuid import uuid4
+
+import pytest
 
 from app.core.config import Settings
 from app.models.schemas import DocumentChunk, KnowledgeBaseScope
@@ -56,3 +59,60 @@ def test_qdrant_repository_filters_product_version_scope():
     assert all(result.product_version == "v2" for result in v2_results)
     assert "GREEN-222" not in " ".join(result.text for result in v1_results)
     assert "BLUE-111" not in " ".join(result.text for result in v2_results)
+
+
+def test_qdrant_repository_disables_environment_proxy_for_remote_url(monkeypatch):
+    seen: dict[str, object] = {}
+
+    class FakeCollection:
+        name = "product_docs"
+
+    class FakeCollections:
+        collections = [FakeCollection()]
+
+    class FakeVectors:
+        size = 64
+
+    class FakeParams:
+        vectors = FakeVectors()
+
+    class FakeConfig:
+        params = FakeParams()
+
+    class FakeCollectionInfo:
+        config = FakeConfig()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            seen.update(kwargs)
+
+        def get_collections(self):
+            return FakeCollections()
+
+        def get_collection(self, collection_name):
+            return FakeCollectionInfo()
+
+    def fake_import(name, *args, **kwargs):
+        if name == "qdrant_client":
+            return type("Module", (), {"QdrantClient": FakeClient})
+        if name == "qdrant_client.models":
+            return type("Models", (), {"Distance": object(), "VectorParams": object})
+        return original_import(name, *args, **kwargs)
+
+    original_import = builtins.__import__
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    try:
+        QdrantVectorRepository(
+            Settings(
+                vector_backend="qdrant",
+                qdrant_url="http://127.0.0.1:6333",
+                qdrant_collection="product_docs",
+                embedding_dimensions=64,
+            )
+        )
+    except TypeError:
+        pytest.fail("QdrantClient should be constructed with keyword arguments supported by qdrant-client")
+
+    assert seen["url"] == "http://127.0.0.1:6333"
+    assert seen["trust_env"] is False
